@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from cv2.typing import MatLike
 
-def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0) -> MatLike:
+def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0, debug=False) -> MatLike:
     """Image processing pipeline."""
     
     lines = np.ones_like(img) * 255
@@ -29,15 +29,34 @@ def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0) -> Ma
     # Convert to grayscale
     gray = cv2.cvtColor(clean, cv2.COLOR_BGR2GRAY)
     
-    edges = cv2.Canny(gray, 50,100)
-    cv2.imwrite('edges.jpg', edges)
+    # Edge detection
+    edges = cv2.Canny(gray, 50, 100)
+    
+    # Debug edges
+    if debug:
+        cv2.namedWindow('edges', cv2.WINDOW_NORMAL)
+        cv2.imshow('edges', edges)
+        cv2.waitKey(0)
 
+    # Find contours
     contours,hierarchy = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    # img = cv2.drawContours(res, contours, -1, (127, 0, 0), 3)
+    
+    # Debug contours
+    if debug:
+        res = np.zeros_like(img)
+        cv2.namedWindow('contours', cv2.WINDOW_NORMAL)
+        cv2.imshow('contours', cv2.drawContours(res, contours, -1, (127, 0, 0), 3))
+        cv2.waitKey(0)
+        
+    if debug:
+        res = np.zeros_like(img)
     
     for contour in tqdm(contours):
-        approx = cv2.approxPolyDP(contour, 0.01*cv2.arcLength(contour,True),True)
-        # cv2.drawContours(res, [approx], -1, (0, 255, 255), 3)
+        approx = cv2.approxPolyDP(contour, 0.01*cv2.arcLength(contour,True), True)
+        
+        # Debug approximate polygons
+        if debug: 
+            cv2.drawContours(res, [approx], -1, (0, 255, 255), 3)
 
         for i1 in range(len(approx)):
             i2 = (i1+1)%len(approx)
@@ -70,14 +89,22 @@ def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0) -> Ma
                 t = max((p1[0] - gray.shape[1])/r[0], (p1[1] - y_target)/r[1])
                 end = p1 - t * r
                 
-            # cv2.line(res, p1, p2, (0, 255, 0), 2)
-            cv2.line(lines, tuple(start.astype(int)), tuple(end.astype(int)), (0, 0, 0), 2)
+            cv2.line(lines, tuple(start.astype(int)), tuple(end.astype(int)), (0, 0, 0), line_width if line_width > 1 else 2)
     
-    cv2.imwrite('lines.jpg', lines)
-    polygons, heiarchy = cv2.findContours(cv2.cvtColor(lines, cv2.COLOR_BGR2GRAY), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)    
+    if debug:
+        cv2.namedWindow('approx', cv2.WINDOW_NORMAL)
+        cv2.namedWindow('lines', cv2.WINDOW_NORMAL)
+        cv2.imshow('approx', res)
+        cv2.imshow('lines', lines)
+        cv2.waitKey(0)
+    
+    polygons, _ = cv2.findContours(cv2.cvtColor(lines, cv2.COLOR_BGR2GRAY), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)    
     
     # Debug all polygons
-    cv2.imwrite("polygons.jpg", cv2.fillPoly(np.array(lines), polygons, (0, 255, 0)))
+    if debug:
+        cv2.namedWindow('polygons', cv2.WINDOW_NORMAL)
+        cv2.imshow("polygons", cv2.fillPoly(np.ones_like(lines)*255, polygons, (0, 255, 0)))
+        cv2.waitKey(0)
     
     out = np.zeros_like(img)
 
@@ -89,22 +116,41 @@ def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0) -> Ma
         out = cv2.fillPoly(out, [polygon], color)
         
         mask[:,:]=0
-             
+    
+    # Fill in lines if line_width is < 1
+    if not line_width > 1:
+        out = cv2.dilate(out, np.ones((5-line_width*2, 5-line_width*2), np.uint8), iterations=-(line_width-1) + 1)
+    
+    # Debug final output
+    if debug:
+        cv2.namedWindow('out', cv2.WINDOW_NORMAL)
+        cv2.imshow('out', out)
+        cv2.waitKey(0)
+    
     return out 
 
 
 if __name__ == '__main__':
     import argparse
+    import pathlib
     
     parser = argparse.ArgumentParser()
     parser.add_argument('input', type=str)
-    parser.add_argument('-o', '--output', type=str, default='output.jpg')
+    parser.add_argument('-o', '--output', type=str, required=False)
     parser.add_argument('-k', type=int, default=2)
     parser.add_argument('-t', '--threshold_length', type=int, default=0)
     parser.add_argument('-l', '--line_width', type=int, default=2)
+    parser.add_argument('-v', '--verbose', action='store_true')
     
     args = parser.parse_args()
     
+    input_path = pathlib.Path(args.input)
+    if not input_path.exists():
+        raise FileNotFoundError(f'File {args.input} does not exist.')
+    
+    if args.output is None:
+        args.output = input_path.stem + '_abstract' + input_path.suffix
+    
     img = cv2.imread(args.input)
-    output = pipeline(img, k=args.k, line_width=args.line_width, threshold_length=args.threshold_length)
+    output = pipeline(img, k=args.k, line_width=args.line_width, threshold_length=args.threshold_length, debug=args.verbose)
     cv2.imwrite(args.output, output)
