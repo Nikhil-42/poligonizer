@@ -142,7 +142,7 @@ if __name__ == '__main__':
     parser.add_argument('input', type=str, help='Input image file path.')
     parser.add_argument('-o', '--output', type=str, required=False, help='Output image file path (default path/to/input_file + _abstract + .input_ext)')
     parser.add_argument('-k', type=int, default=2, help='Number of colors to reduce to.')
-    parser.add_argument('-t', '--threshold_length', type=int, default=0, help='Minimum length of a line to be drawn.')
+    parser.add_argument('-t', '--threshold_length', type=int, default=20, help='Minimum length of a line to be drawn.')
     parser.add_argument('-l', '--line_width', type=int, default=2, help='Width of the lines to be drawn.')
     parser.add_argument('-v', '--verbose', action='store_true', help='Show debug windows.')
     
