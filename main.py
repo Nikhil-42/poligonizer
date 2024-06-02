@@ -1,12 +1,10 @@
-# type: ignore
-
-from math import e
-from tqdm import tqdm
+#type: ignore
 import cv2
+from tqdm import tqdm
 import numpy as np
 from cv2.typing import MatLike
 
-def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0, debug=False) -> MatLike:
+def pipeline(img: MatLike, k: int, line_width: int=2, threshold_length: float=0.0, debug: bool=False) -> MatLike:
     """Image processing pipeline."""
     
     lines = np.ones_like(img) * 255
@@ -18,6 +16,7 @@ def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0, debug
     Z = clean.reshape((-1,3))
     Z = np.float32(Z)
     
+    # Uses kmeans to reduce the number of colors present (helps make edges longer)
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
     flags = cv2.KMEANS_PP_CENTERS
     compactness,label,centers = cv2.kmeans(Z, k, None, criteria, 10, flags)
@@ -51,6 +50,7 @@ def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0, debug
     if debug:
         res = np.zeros_like(img)
     
+    # Fit approximate polygons to contours
     for contour in tqdm(contours):
         approx = cv2.approxPolyDP(contour, 0.01*cv2.arcLength(contour,True), True)
         
@@ -58,6 +58,7 @@ def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0, debug
         if debug: 
             cv2.drawContours(res, [approx], -1, (0, 255, 255), 3)
 
+        # Extract lines from polygons and extend them
         for i1 in range(len(approx)):
             i2 = (i1+1)%len(approx)
             p1 = approx[i1][0]
@@ -88,7 +89,8 @@ def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0, debug
                 y_target = 0 if r[1] < 0 else gray.shape[0]
                 t = max((p1[0] - gray.shape[1])/r[0], (p1[1] - y_target)/r[1])
                 end = p1 - t * r
-                
+            
+            # Draw the lines
             cv2.line(lines, tuple(start.astype(int)), tuple(end.astype(int)), (0, 0, 0), line_width if line_width > 1 else 2)
     
     if debug:
@@ -98,6 +100,7 @@ def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0, debug
         cv2.imshow('lines', lines)
         cv2.waitKey(0)
     
+    # Find all the polygons made by the lines
     polygons, _ = cv2.findContours(cv2.cvtColor(lines, cv2.COLOR_BGR2GRAY), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)    
     
     # Debug all polygons
@@ -108,6 +111,7 @@ def pipeline(img: MatLike, k: int, line_width = 2, threshold_length = 0.0, debug
     
     out = np.zeros_like(img)
 
+    # Fill in polygons with color
     mask = np.zeros_like(gray)
     for polygon in tqdm(polygons):
         cv2.fillPoly(mask, [polygon], 255)
@@ -135,12 +139,12 @@ if __name__ == '__main__':
     import pathlib
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('input', type=str)
-    parser.add_argument('-o', '--output', type=str, required=False)
-    parser.add_argument('-k', type=int, default=2)
-    parser.add_argument('-t', '--threshold_length', type=int, default=0)
-    parser.add_argument('-l', '--line_width', type=int, default=2)
-    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('input', type=str, help='Input image file path.')
+    parser.add_argument('-o', '--output', type=str, required=False, help='Output image file path (default path/to/input_file + _abstract + .input_ext)')
+    parser.add_argument('-k', type=int, default=2, help='Number of colors to reduce to.')
+    parser.add_argument('-t', '--threshold_length', type=int, default=0, help='Minimum length of a line to be drawn.')
+    parser.add_argument('-l', '--line_width', type=int, default=2, help='Width of the lines to be drawn.')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Show debug windows.')
     
     args = parser.parse_args()
     
